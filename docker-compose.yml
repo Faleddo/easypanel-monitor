@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  easypanel-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: easypanel-monitor
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.easypanel-monitor.rule=Host(`monitor.yourdomain.com`)"
+      - "traefik.http.routers.easypanel-monitor.tls=true"
+      - "traefik.http.routers.easypanel-monitor.tls.certresolver=letsencrypt"
+      - "traefik.http.services.easypanel-monitor.loadbalancer.server.port=3000"
+
+  # Optional: Development service with hot reload
+  easypanel-monitor-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: easypanel-monitor-dev
+    ports:
+      - "3001:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
+    profiles:
+      - dev 
