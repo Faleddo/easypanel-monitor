@@ -186,6 +186,7 @@ If you encounter any issues or have questions:
 
 - [x] Auto-refresh monitoring data
 - [x] Dark/light theme toggle
+- [x] Auth using API key
 - [ ] Historical data charts
 - [ ] Alert notifications
 - [ ] Server health status indicators 
