@@ -10,9 +10,6 @@ import { MonitorData } from "@/types"
 import { getSettings } from "@/lib/settings"
 import { useAutoRefresh } from "@/hooks/useAutoRefresh"
 
-// For the charts, we'll use a simple SVG-based area chart
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
 type SortField = 'projectName' | 'serviceName' | 'cpuPercent' | 'memoryPercent' | 'memoryUsage' | 'networkIn' | 'networkOut'
 type SortDirection = 'asc' | 'desc'
 type TabType = 'server' | 'services'
