@@ -32,6 +32,124 @@ interface AreaChartProps {
   yMax?: number
 }
 
+// Network Chart Component for handling both in and out data
+interface NetworkChartProps {
+  data: Array<{ time: string; in: number; out: number }>
+  height?: number
+}
+
+const NetworkChart = ({ data, height = 192 }: NetworkChartProps) => {
+  if (data.length === 0) return <div className="flex items-center justify-center h-48 text-muted-foreground">No data</div>
+
+  const allValues = data.flatMap(d => [d.in, d.out])
+  const maxValue = Math.max(...allValues)
+  const minValue = Math.min(...allValues)
+  const range = maxValue - minValue || 1
+
+  const inPoints = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * 100
+    const y = 100 - ((d.in - minValue) / range) * 100
+    return { x, y }
+  })
+
+  const outPoints = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * 100
+    const y = 100 - ((d.out - minValue) / range) * 100
+    return { x, y }
+  })
+
+  // Create smooth curve path using cubic Bézier curves
+  const createSmoothPath = (points: Array<{ x: number; y: number }>) => {
+    if (points.length < 2) return ''
+    
+    let path = `M ${points[0].x},${points[0].y}`
+    
+    for (let i = 1; i < points.length; i++) {
+      const current = points[i]
+      const previous = points[i - 1]
+      
+      const tension = 0.3
+      const cp1x = previous.x + (current.x - previous.x) * tension
+      const cp1y = previous.y
+      const cp2x = current.x - (current.x - previous.x) * tension
+      const cp2y = current.y
+      
+      path += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${current.x},${current.y}`
+    }
+    
+    return path
+  }
+
+  const inLine = createSmoothPath(inPoints)
+  const outLine = createSmoothPath(outPoints)
+  const inAreaPath = `${inLine} L 100,100 L 0,100 Z`
+  const outAreaPath = `${outLine} L 100,100 L 0,100 Z`
+
+  return (
+    <div className="relative w-full" style={{ height }}>
+      <svg 
+        width="100%" 
+        height="100%" 
+        viewBox="0 0 100 100" 
+        preserveAspectRatio="none"
+        className="absolute inset-0"
+      >
+        {/* In traffic area */}
+        <path
+          d={inAreaPath}
+          fill="#3b82f6"
+          fillOpacity="0.2"
+          stroke="none"
+        />
+        {/* Out traffic area */}
+        <path
+          d={outAreaPath}
+          fill="#ef4444"
+          fillOpacity="0.2"
+          stroke="none"
+        />
+        {/* In traffic line */}
+        <path
+          d={inLine}
+          fill="none"
+          stroke="#3b82f6"
+          strokeWidth="0.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {/* Out traffic line */}
+        <path
+          d={outLine}
+          fill="none"
+          stroke="#ef4444"
+          strokeWidth="0.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      {/* Legend */}
+      <div className="absolute top-2 right-2 flex gap-4 text-xs">
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <span className="text-muted-foreground">In</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+          <span className="text-muted-foreground">Out</span>
+        </div>
+      </div>
+      {/* Time labels */}
+      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-muted-foreground px-2">
+        <span>{data[0]?.time}</span>
+        <span>{data[Math.floor(data.length / 2)]?.time}</span>
+        <span>{data[data.length - 1]?.time}</span>
+      </div>
+    </div>
+  )
+}
+
 const SimpleAreaChart = ({ data, color, height = 192, yMax }: AreaChartProps) => {
   if (data.length === 0) return <div className="flex items-center justify-center h-48 text-muted-foreground">No data</div>
 
@@ -624,7 +742,7 @@ export default function MonitorPage() {
               </div>
             </div>
             <div className="h-48">
-              <SimpleAreaChart data={networkData} color="#8b5cf6" />
+              <NetworkChart data={networkData} />
             </div>
           </div>
         </div>
