@@ -4,7 +4,7 @@ import { useState, useMemo } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Trash2, RefreshCw, AlertCircle, CheckCircle, XCircle, ChevronUp, ChevronDown, Search } from "lucide-react"
+import { Trash2, RefreshCw, AlertCircle, CheckCircle, XCircle, ChevronUp, ChevronDown, Search, BarChart3 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { ServerOverview } from "@/types"
 
@@ -289,13 +289,25 @@ export function ServerTable({ servers, onRefresh, onServerDeleted, refreshing }:
                   }
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleRemoveServer(server.tokenKey, server.hostname)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenMonitor(server.tokenKey)}
+                      disabled={server.status === 'error'}
+                      title="View monitoring details"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleRemoveServer(server.tokenKey, server.hostname)}
+                      title="Remove server"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -324,14 +336,25 @@ export function ServerTable({ servers, onRefresh, onServerDeleted, refreshing }:
                   </span>
                 </div>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => handleRemoveServer(server.tokenKey, server.hostname)}
-                className="shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenMonitor(server.tokenKey)}
+                  disabled={server.status === 'error'}
+                  title="View monitoring details"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleRemoveServer(server.tokenKey, server.hostname)}
+                  title="Remove server"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Server stats */}

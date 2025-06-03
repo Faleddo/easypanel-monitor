@@ -5,13 +5,106 @@ import { useParams, useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ArrowLeft, RefreshCw, ChevronUp, ChevronDown, Search } from "lucide-react"
+import { ArrowLeft, RefreshCw, ChevronUp, ChevronDown, Search, Construction } from "lucide-react"
 import { MonitorData } from "@/types"
 import { getSettings } from "@/lib/settings"
 import { useAutoRefresh } from "@/hooks/useAutoRefresh"
 
+// For the charts, we'll use a simple SVG-based area chart
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+
 type SortField = 'projectName' | 'serviceName' | 'cpuPercent' | 'memoryPercent' | 'memoryUsage' | 'networkIn' | 'networkOut'
 type SortDirection = 'asc' | 'desc'
+type TabType = 'server' | 'services'
+
+interface SystemStatData {
+  cpu: Array<{ value: number | null; time: string }>
+  memory: Array<{ value: number | null; time: string }>
+  disk: Array<{ value: number | null; time: string }>
+  network: Array<{ in: number | null; out: number | null; time: string }>
+}
+
+// Simple SVG Area Chart Component
+interface AreaChartProps {
+  data: Array<{ time: string; value: number }>
+  color: string
+  height?: number
+  yMax?: number
+}
+
+const SimpleAreaChart = ({ data, color, height = 192, yMax }: AreaChartProps) => {
+  if (data.length === 0) return <div className="flex items-center justify-center h-48 text-muted-foreground">No data</div>
+
+  const maxValue = yMax || Math.max(...data.map(d => d.value))
+  const minValue = Math.min(...data.map(d => d.value))
+  const range = maxValue - minValue || 1
+
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * 100
+    const y = 100 - ((d.value - minValue) / range) * 100
+    return { x, y }
+  })
+
+  // Create smooth curve path using cubic Bézier curves
+  const createSmoothPath = (points: Array<{ x: number; y: number }>) => {
+    if (points.length < 2) return ''
+    
+    let path = `M ${points[0].x},${points[0].y}`
+    
+    for (let i = 1; i < points.length; i++) {
+      const current = points[i]
+      const previous = points[i - 1]
+      
+      // Calculate control points for smooth curve
+      const tension = 0.3 // Adjust this value to control curve smoothness (0-1)
+      const cp1x = previous.x + (current.x - previous.x) * tension
+      const cp1y = previous.y
+      const cp2x = current.x - (current.x - previous.x) * tension
+      const cp2y = current.y
+      
+      path += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${current.x},${current.y}`
+    }
+    
+    return path
+  }
+
+  const smoothLine = createSmoothPath(points)
+  const areaPath = `${smoothLine} L 100,100 L 0,100 Z`
+
+  return (
+    <div className="relative w-full" style={{ height }}>
+      <svg 
+        width="100%" 
+        height="100%" 
+        viewBox="0 0 100 100" 
+        preserveAspectRatio="none"
+        className="absolute inset-0"
+      >
+        <path
+          d={areaPath}
+          fill={color}
+          fillOpacity="0.3"
+          stroke="none"
+        />
+        <path
+          d={smoothLine}
+          fill="none"
+          stroke={color}
+          strokeWidth="0.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      {/* Time labels */}
+      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-muted-foreground px-2">
+        <span>{data[0]?.time}</span>
+        <span>{data[Math.floor(data.length / 2)]?.time}</span>
+        <span>{data[data.length - 1]?.time}</span>
+      </div>
+    </div>
+  )
+}
 
 export default function MonitorPage() {
   const params = useParams()
@@ -19,6 +112,7 @@ export default function MonitorPage() {
   const tokenKey = `easypanel_token_${params.tokenKey}`
   const [serverInfo, setServerInfo] = useState<any>(null)
   const [monitorData, setMonitorData] = useState<MonitorData[]>([])
+  const [systemStats, setSystemStats] = useState<SystemStatData | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
@@ -26,6 +120,41 @@ export default function MonitorPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortField, setSortField] = useState<SortField>('projectName')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [activeTab, setActiveTab] = useState<TabType>('server')
+
+  // Load mock system stats data
+  useEffect(() => {
+    const loadSystemStats = async () => {
+      try {
+        const response = await fetch('/systemstat.json')
+        const data = await response.json()
+        setSystemStats(data.result.data.json)
+      } catch (error) {
+        console.error('Failed to load system stats:', error)
+        // Mock data fallback
+        setSystemStats({
+          cpu: Array.from({ length: 20 }, (_, i) => ({
+            value: Math.random() * 100,
+            time: new Date(Date.now() - (19 - i) * 5 * 60 * 1000).toISOString()
+          })),
+          memory: Array.from({ length: 20 }, (_, i) => ({
+            value: 60 + Math.random() * 30,
+            time: new Date(Date.now() - (19 - i) * 5 * 60 * 1000).toISOString()
+          })),
+          disk: Array.from({ length: 20 }, (_, i) => ({
+            value: 45 + Math.random() * 10,
+            time: new Date(Date.now() - (19 - i) * 5 * 60 * 1000).toISOString()
+          })),
+          network: Array.from({ length: 20 }, (_, i) => ({
+            in: Math.random() * 1000,
+            out: Math.random() * 800,
+            time: new Date(Date.now() - (19 - i) * 5 * 60 * 1000).toISOString()
+          }))
+        })
+      }
+    }
+    loadSystemStats()
+  }, [])
 
   // Update settings when localStorage changes
   useEffect(() => {
@@ -229,6 +358,37 @@ export default function MonitorPage() {
     }
   }
 
+  const formatTime = (timeString: string) => {
+    const date = new Date(timeString)
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    })
+  }
+
+  // Prepare chart data
+  const prepareChartData = (data: Array<{ value: number | null; time: string }>) => {
+    return data
+      .filter(item => item.value !== null)
+      .slice(-24) // Show last 24 data points
+      .map(item => ({
+        time: formatTime(item.time),
+        value: item.value as number
+      }))
+  }
+
+  const prepareNetworkChartData = (data: Array<{ in: number | null; out: number | null; time: string }>) => {
+    return data
+      .filter(item => item.in !== null && item.out !== null)
+      .slice(-24) // Show last 24 data points  
+      .map(item => ({
+        time: formatTime(item.time),
+        in: item.in as number,
+        out: item.out as number
+      }))
+  }
+
   if (loading) {
     return <div className="text-center py-8">Loading monitor data...</div>
   }
@@ -237,30 +397,8 @@ export default function MonitorPage() {
     return <div className="text-center py-8">Server not found</div>
   }
 
-  return (
+  const renderServicesMonitoring = () => (
     <div className="space-y-4 md:space-y-6">
-      {/* Mobile-responsive header */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={handleGoBack} className="shrink-0">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Back to Dashboard</span>
-            <span className="sm:hidden">Back</span>
-          </Button>
-          <Button onClick={fetchMonitorData} disabled={refreshing} className="shrink-0">
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''} sm:mr-2`} />
-            <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-          </Button>
-        </div>
-        
-        <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-bold break-words">
-            Monitor: {serverInfo.hostname}
-          </h1>
-          <p className="text-muted-foreground text-sm">Real-time container monitoring</p>
-        </div>
-      </div>
-
       {error && (
         <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
           {error} (Showing mock data for demonstration)
@@ -270,7 +408,7 @@ export default function MonitorPage() {
       {/* Search and controls */}
       {monitorData.length > 0 && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">Container Services</h2>
+          <h3 className="text-lg font-semibold">Container Services</h3>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -366,7 +504,7 @@ export default function MonitorPage() {
         {filteredAndSortedData.map((item) => (
           <div key={item.id} className="border rounded-lg p-4 space-y-3">
             <div className="border-b pb-2">
-              <h3 className="font-semibold text-lg">{item.projectName}</h3>
+              <h4 className="font-semibold text-lg">{item.projectName}</h4>
               <p className="text-sm text-muted-foreground break-words">{item.serviceName}</p>
             </div>
             
@@ -409,6 +547,147 @@ export default function MonitorPage() {
           No monitoring data available
         </div>
       )}
+    </div>
+  )
+
+  const renderServerMonitoring = () => {
+    if (!systemStats) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+          <Construction className="h-16 w-16 text-muted-foreground" />
+          <h3 className="text-xl font-semibold text-muted-foreground">Loading System Stats...</h3>
+        </div>
+      )
+    }
+
+    const cpuData = prepareChartData(systemStats.cpu)
+    const memoryData = prepareChartData(systemStats.memory)
+    const diskData = prepareChartData(systemStats.disk)
+    const networkData = prepareNetworkChartData(systemStats.network)
+
+    return (
+      <div className="space-y-6">
+        <h3 className="text-lg font-semibold">System Monitoring</h3>
+        
+        {/* Charts Grid - 2 columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* CPU Usage Chart */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">CPU Usage</h4>
+              <span className="text-sm text-muted-foreground">
+                {cpuData.length > 0 ? `${cpuData[cpuData.length - 1].value.toFixed(1)}%` : 'N/A'}
+              </span>
+            </div>
+            <div className="h-48">
+              <SimpleAreaChart data={cpuData} color="#3b82f6" />
+            </div>
+          </div>
+
+          {/* Memory Usage Chart */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Memory Usage</h4>
+              <span className="text-sm text-muted-foreground">
+                {memoryData.length > 0 ? `${memoryData[memoryData.length - 1].value.toFixed(1)}%` : 'N/A'}
+              </span>
+            </div>
+            <div className="h-48">
+              <SimpleAreaChart data={memoryData} color="#10b981" />
+            </div>
+          </div>
+
+          {/* Disk Usage Chart */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Disk Usage</h4>
+              <span className="text-sm text-muted-foreground">
+                {diskData.length > 0 ? `${diskData[diskData.length - 1].value.toFixed(1)}%` : 'N/A'}
+              </span>
+            </div>
+            <div className="h-48">
+              <SimpleAreaChart data={diskData} color="#f59e0b" />
+            </div>
+          </div>
+
+          {/* Network Usage Chart */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Network Usage</h4>
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <span>
+                  In: {networkData.length > 0 ? `${formatNetworkBytes(networkData[networkData.length - 1].in)}` : 'N/A'}
+                </span>
+                <span>
+                  Out: {networkData.length > 0 ? `${formatNetworkBytes(networkData[networkData.length - 1].out)}` : 'N/A'}
+                </span>
+              </div>
+            </div>
+            <div className="h-48">
+              <SimpleAreaChart data={networkData} color="#8b5cf6" />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 md:space-y-6">
+      {/* Mobile-responsive header */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" onClick={handleGoBack} className="shrink-0">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
+          </Button>
+          <Button onClick={fetchMonitorData} disabled={refreshing} className="shrink-0">
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''} sm:mr-2`} />
+            <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
+        </div>
+        
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl font-bold break-words">
+            Monitor: {serverInfo.hostname}
+          </h1>
+          <p className="text-muted-foreground text-sm">Real-time monitoring dashboard</p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="space-y-6">
+        {/* Tab buttons */}
+        <div className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground w-full sm:w-auto">
+          <button
+            onClick={() => setActiveTab('server')}
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 flex-1 sm:flex-none ${
+              activeTab === 'server'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'hover:bg-background/50'
+            }`}
+          >
+            Server Monitoring
+          </button>
+          <button
+            onClick={() => setActiveTab('services')}
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 flex-1 sm:flex-none ${
+              activeTab === 'services'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'hover:bg-background/50'
+            }`}
+          >
+            Services Monitoring
+          </button>
+        </div>
+
+        {/* Tab content */}
+        <div className="mt-6">
+          {activeTab === 'server' && renderServerMonitoring()}
+          {activeTab === 'services' && renderServicesMonitoring()}
+        </div>
+      </div>
     </div>
   )
 } 
